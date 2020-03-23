@@ -28,6 +28,7 @@ struct list
 pthread_mutex_t mutex_lock;
 
 struct list *List;
+struct list *Sub_Lists[4];
 
 void bind_thread_to_cpu(int cpuid) 
 {
@@ -56,37 +57,29 @@ struct Node* generate_data_node()
 
 void* producer_thread(void *arg)
 {
-	bind_thread_to_cpu(*((int*)arg)); // bind this thread to a CPU
+	int tid = *((int*)arg);
+	bind_thread_to_cpu(tid); // bind this thread to a CPU
 
 	struct Node* ptr, tmp;
 
 	// generate and attach K nodes to the global list
-	while (int i = 0; i < K; i++)
+	for (int i = 0; i < K; i++)
 	{
 		ptr = generate_data_node();
 
 		if (NULL != ptr)
 		{
-			for (;;)
+			ptr->data  = 1; //generate data
+			// attache the generated node to the global list
+			if(Sub_Lists[tid]->header == NULL)
 			{
-				// access the critical region and add a node to the global list
-				if(!pthread_mutex_trylock(&mutex_lock))
-				{
-					ptr->data  = 1; //generate data
-					// attache the generated node to the global list
-					if(List->header == NULL)
-					{
-						List->header = List->tail = ptr;
-					}
-					else
-					{
-						List->tail->next = ptr;
-						List->tail = ptr;
-					}                    
-					pthread_mutex_unlock(&mutex_lock);
-					break;
-				}
-			}           
+				Sub_Lists[tid]->header = Sub_Lists[tid]->tail = ptr;
+			}
+			else
+			{
+				Sub_Lists[tid]->tail->next = ptr;
+				Sub_Lists[tid]->tail = ptr;
+			}                    
 		}
 	}
 }
@@ -112,6 +105,7 @@ int main(int argc, char* argv[])
 	pthread_t producer[num_threads];
 
 	NUM_PROCS = sysconf(_SC_NPROCESSORS_CONF); //get number of CPU
+
 
 	if (NUM_PROCS > 0)
 	{
@@ -140,11 +134,19 @@ int main(int argc, char* argv[])
 	}
 	List->header = List->tail = NULL;
 
+	// create sub lists
+	for (int i = 0; i < NUM_PROCS; i++)
+	{
+		Sub_Lists[i] = (struct list*)malloc(sizeof(struct list));
+		Sub_Lists[i]->header = Sub_Lists[i]->tail = NULL;
+	}
+
 	gettimeofday(&starttime, NULL); //get program start time
 
 	for (i = 0; i < num_threads; i++)
 	{
-		pthread_create(&(producer[i]), NULL, (void*)producer_thread, &cpu_array[i % NUM_PROCS]);
+		pthread_create(&(producer[i]), NULL, (void*)producer_thread,
+			       	&cpu_array[i % NUM_PROCS]);
 	}
 
 	for (i = 0; i < num_threads; i++)
