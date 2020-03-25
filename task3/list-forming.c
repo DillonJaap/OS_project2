@@ -11,7 +11,7 @@ There are num_threads threads. The value of "num_threads" is input by the studen
 #include <sys/param.h>
 #include <sched.h>
 
-#define K 200 // generate a data node for K times in each thread
+int K = 200; // generate a data node for K times in each thread
 
 struct Node
 {
@@ -112,6 +112,9 @@ int main(int argc, char* argv[])
 
 	num_threads = atoi(argv[1]); //read num_threads from user
 	pthread_t producer[num_threads];
+
+	K = atoi(argv[2]); //read K from user
+
 	NUM_PROCS = sysconf(_SC_NPROCESSORS_CONF);//get number of CPU
 	if( NUM_PROCS > 0)
 	{
@@ -170,8 +173,13 @@ int main(int argc, char* argv[])
 	if (cpu_array!= NULL)
 		free(cpu_array);
 
-	/* calculate program runtime */
-	printf("Total run time is %ld microseconds.\n",
-		(endtime.tv_sec-starttime.tv_sec) * 1000000+(endtime.tv_usec-starttime.tv_usec));
+	long time = (endtime.tv_sec-starttime.tv_sec) * 1000000+(endtime.tv_usec-starttime.tv_usec);
+	// calculate program runtime
+	printf("Total run time is %ld microseconds.\n", time);
+
+	// print to file
+	FILE* fp = fopen("list-out.txt", "a");
+	fprintf(fp, "%d,%d,%ld\n", K, num_threads, time);
+	fclose(fp);
 	return 0; 
 }

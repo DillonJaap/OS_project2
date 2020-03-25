@@ -11,7 +11,7 @@ There are num_threads threads. The value of "num_threads" is input by the studen
 #include <sys/param.h>
 #include <sched.h>
 
-#define K 200 // generate a data node for K times in each thread
+int K = 200; // generate a data node for K times in each thread
 
 struct Node
 {
@@ -28,7 +28,6 @@ struct list
 pthread_mutex_t mutex_lock;
 
 struct list *List;
-struct list *Sub_Lists[4];
 
 void bind_thread_to_cpu(int cpuid) 
 {
@@ -62,6 +61,10 @@ void* producer_thread(void *arg)
 
 	struct Node* ptr, tmp;
 
+	// create sublist
+	struct list* SubList = (struct list*)malloc(sizeof(struct list));
+	SubList->header = SubList->tail = NULL;
+
 	// generate and attach K nodes to the global list
 	for (int i = 0; i < K; i++)
 	{
@@ -69,19 +72,35 @@ void* producer_thread(void *arg)
 
 		if (NULL != ptr)
 		{
-			ptr->data  = 1; //generate data
-			// attache the generated node to the global list
-			if(Sub_Lists[tid]->header == NULL)
+			// lock mutex
+
+			ptr->data  = i; //generate data
+			// attach the generated node to the global list
+			if (SubList->header == NULL)
 			{
-				Sub_Lists[tid]->header = Sub_Lists[tid]->tail = ptr;
+				SubList->header = SubList->tail = ptr;
 			}
 			else
 			{
-				Sub_Lists[tid]->tail->next = ptr;
-				Sub_Lists[tid]->tail = ptr;
+				SubList->tail->next = ptr;
+				SubList->tail = ptr;
 			}                    
 		}
 	}
+
+	// attach sublist to global list
+	pthread_mutex_lock(&mutex_lock);
+	if (List->header == NULL)
+	{
+		List->header = SubList->header;
+		List->tail = SubList->tail;
+	}
+	else
+	{
+		List->tail->next = SubList->header;
+		List->tail = SubList->tail;
+	}
+	pthread_mutex_unlock(&mutex_lock);
 }
 
 
@@ -103,6 +122,8 @@ int main(int argc, char* argv[])
 
 	num_threads = atoi(argv[1]); //read num_threads from user
 	pthread_t producer[num_threads];
+
+	K = atoi(argv[2]); // read K from user
 
 	NUM_PROCS = sysconf(_SC_NPROCESSORS_CONF); //get number of CPU
 
@@ -134,12 +155,6 @@ int main(int argc, char* argv[])
 	}
 	List->header = List->tail = NULL;
 
-	// create sub lists
-	for (int i = 0; i < NUM_PROCS; i++)
-	{
-		Sub_Lists[i] = (struct list*)malloc(sizeof(struct list));
-		Sub_Lists[i]->header = Sub_Lists[i]->tail = NULL;
-	}
 
 	gettimeofday(&starttime, NULL); //get program start time
 
@@ -158,6 +173,11 @@ int main(int argc, char* argv[])
 
 	gettimeofday(&endtime, NULL); //get the finish time
 
+	/* // print list to make sure it was created properly
+	for (; List->header != NULL; List->header = List->header->next)
+		printf("%d\n", List->header->data);
+	*/
+
 	// clean up / free memory
 	if (List->header != NULL)
 	{
@@ -172,8 +192,13 @@ int main(int argc, char* argv[])
 	if (cpu_array!= NULL)
 		free(cpu_array);
 
-	/* calculate program runtime */
-	printf("Total run time is %ld microseconds.\n",
-		(endtime.tv_sec-starttime.tv_sec) * 1000000+(endtime.tv_usec-starttime.tv_usec));
+	long time = (endtime.tv_sec-starttime.tv_sec) * 1000000+(endtime.tv_usec-starttime.tv_usec);
+	// calculate program runtime
+	printf("Total run time is %ld microseconds.\n", time);
+
+	// print to file
+	FILE* fp = fopen("my_list-out.txt", "a");
+	fprintf(fp, "%d,%d,%ld\n", K, num_threads, time);
+	fclose(fp);
 	return 0; 
 }
